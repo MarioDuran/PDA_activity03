@@ -1,8 +1,45 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Pause, SkipForward, RotateCcw, CheckCircle, XCircle, MousePointer2, Layers } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDA Studio - Simulador de Autómata de Pila</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel para compilar JSX en el navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-300 font-sans h-screen w-screen overflow-hidden">
+    
+    <!-- Contenedor principal de React -->
+    <div id="root" class="h-full w-full"></div>
 
-// --- Default Configuration (a^n b^n with lambda notation) ---
-const DEFAULT_CONFIG = `{
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+        // --- Iconos Integrados (Reemplazo de lucide-react para un solo archivo) ---
+        const IconBase = ({ children, size=24, className="" }) => (
+          <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+            {children}
+          </svg>
+        );
+        const Play = (p) => <IconBase {...p} fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></IconBase>;
+        const Pause = (p) => <IconBase {...p} fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></IconBase>;
+        const SkipForward = (p) => <IconBase {...p}><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></IconBase>;
+        const RotateCcw = (p) => <IconBase {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></IconBase>;
+        const CheckCircle = (p) => <IconBase {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconBase>;
+        const XCircle = (p) => <IconBase {...p}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></IconBase>;
+        const MousePointer2 = (p) => <IconBase {...p}><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="m13 13 6 6"/></IconBase>;
+        const Layers = (p) => <IconBase {...p}><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></IconBase>;
+
+        // --- Configuración por Defecto (a^n b^n con notación lambda) ---
+        const DEFAULT_CONFIG = `{
   "states": ["q0", "q1"],
   "startState": "q0",
   "startStack": "",
@@ -14,553 +51,529 @@ const DEFAULT_CONFIG = `{
   ]
 }`;
 
-// --- Physics Constants ---
-const REPULSION = 14000;
-const SPRING_LENGTH = 250;
-const SPRING_STRENGTH = 0.04;
-const DAMPING = 0.90;
-const CENTER_PULL = 0.01;
+        // --- Constantes de Físicas ---
+        const REPULSION = 14000;
+        const SPRING_LENGTH = 250;
+        const SPRING_STRENGTH = 0.04;
+        const DAMPING = 0.90;
+        const CENTER_PULL = 0.01;
 
-// --- Helper: SVG Math ---
-const getPointOnCircle = (x, y, radius, angle) => ({
-  x: x + radius * Math.cos(angle),
-  y: y + radius * Math.sin(angle),
-});
+        // --- Helper: Matemáticas SVG ---
+        const getPointOnCircle = (x, y, radius, angle) => ({
+          x: x + radius * Math.cos(angle),
+          y: y + radius * Math.sin(angle),
+        });
 
-const calculateEdge = (source, target, isSelfLoop, radius = 30) => {
-  if (isSelfLoop) {
-    const x = source.x;
-    const y = source.y - radius;
-    return {
-      d: `M ${x - 10} ${y} C ${x - 40} ${y - 80}, ${x + 40} ${y - 80}, ${x + 10} ${y}`,
-      labelX: x,
-      labelY: y - 70
-    };
-  }
-  const dx = target.x - source.x;
-  const dy = target.y - source.y;
-  const angle = Math.atan2(dy, dx);
-  const start = getPointOnCircle(source.x, source.y, radius, angle);
-  const end = getPointOnCircle(target.x, target.y, radius + 8, angle + Math.PI);
-  return {
-    d: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
-    labelX: (start.x + end.x) / 2,
-    labelY: (start.y + end.y) / 2 - 12
-  };
-};
+        const calculateEdge = (source, target, isSelfLoop, radius = 30) => {
+          if (isSelfLoop) {
+            const x = source.x;
+            const y = source.y - radius;
+            return {
+              d: `M ${x - 10} ${y} C ${x - 40} ${y - 80}, ${x + 40} ${y - 80}, ${x + 10} ${y}`,
+              labelX: x,
+              labelY: y - 70
+            };
+          }
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const angle = Math.atan2(dy, dx);
+          const start = getPointOnCircle(source.x, source.y, radius, angle);
+          const end = getPointOnCircle(target.x, target.y, radius + 8, angle + Math.PI);
+          return {
+            d: `M ${start.x} ${start.y} L ${end.x} ${end.y}`,
+            labelX: (start.x + end.x) / 2,
+            labelY: (start.y + end.y) / 2 - 12
+          };
+        };
 
-export default function PDAEngine() {
-  // --- Core State ---
-  const [code, setCode] = useState(DEFAULT_CONFIG);
-  const [parsedPDA, setParsedPDA] = useState(null);
-  const [error, setError] = useState(null);
-  const [inputString, setInputString] = useState("aabb");
+        // --- Componente Principal ---
+        function PDAEngine() {
+          const [code, setCode] = useState(DEFAULT_CONFIG);
+          const [parsedPDA, setParsedPDA] = useState(null);
+          const [error, setError] = useState(null);
+          const [inputString, setInputString] = useState("aabb");
 
-  // --- Simulation State ---
-  const [currentState, setCurrentState] = useState(null);
-  const [stack, setStack] = useState([]);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [verdict, setVerdict] = useState('pending');
-  const timerRef = useRef(null);
+          const [currentState, setCurrentState] = useState(null);
+          const [stack, setStack] = useState([]);
+          const [stepIndex, setStepIndex] = useState(0);
+          const [isPlaying, setIsPlaying] = useState(false);
+          const [verdict, setVerdict] = useState('pending');
+          const timerRef = useRef(null);
 
-  // --- Physics/Layout State ---
-  const [nodes, setNodes] = useState([]);
-  const requestRef = useRef();
-  const draggingNode = useRef(null);
-  const svgRef = useRef(null);
+          const [nodes, setNodes] = useState([]);
+          const requestRef = useRef();
+          const draggingNode = useRef(null);
+          const svgRef = useRef(null);
 
-  // --- Parsing Logic ---
-  useEffect(() => {
-    try {
-      const pda = JSON.parse(code);
-      // Corrección aquí: verificamos si startStack es undefined en lugar de usar !pda.startStack
-      if (!pda.states || !pda.startState || !pda.transitions || pda.startStack === undefined) {
-        throw new Error("Missing required fields: states, startState, startStack, or transitions.");
-      }
-      setParsedPDA(pda);
-      setError(null);
-      resetSimulation(pda);
+          // Lógica de Parseo
+          useEffect(() => {
+            try {
+              const pda = JSON.parse(code);
+              if (!pda.states || !pda.startState || !pda.transitions || pda.startStack === undefined) {
+                throw new Error("Missing required fields: states, startState, startStack, or transitions.");
+              }
+              setParsedPDA(pda);
+              setError(null);
+              resetSimulation(pda);
 
-      // Initialize Nodes for Physics
-      const newNodes = pda.states.map((s, i) => {
-        const angle = (i / pda.states.length) * 2 * Math.PI;
-        const radius = 120;
-        return { id: s, x: 350 + radius * Math.cos(angle), y: 250 + radius * Math.sin(angle), vx: 0, vy: 0 };
-      });
-      setNodes(newNodes);
-    } catch (e) {
-      setError(e.message);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+              const newNodes = pda.states.map((s, i) => {
+                const angle = (i / pda.states.length) * 2 * Math.PI;
+                const radius = 120;
+                return { id: s, x: 350 + radius * Math.cos(angle), y: 250 + radius * Math.sin(angle), vx: 0, vy: 0 };
+              });
+              setNodes(newNodes);
+            } catch (e) {
+              setError(e.message);
+            }
+          }, [code]);
 
-  // --- Physics Engine Loop ---
-  const updatePhysics = useCallback(() => {
-    setNodes(prevNodes => {
-      if (!parsedPDA) return prevNodes;
-      const nextNodes = prevNodes.map(n => ({ ...n }));
-      const width = svgRef.current?.clientWidth || 700;
-      const height = svgRef.current?.clientHeight || 500;
+          // Loop de Motor de Físicas
+          const updatePhysics = useCallback(() => {
+            setNodes(prevNodes => {
+              if (!parsedPDA) return prevNodes;
+              const nextNodes = prevNodes.map(n => ({ ...n }));
+              const width = svgRef.current?.clientWidth || 700;
+              const height = svgRef.current?.clientHeight || 500;
 
-      // 1. Repulsion
-      for (let i = 0; i < nextNodes.length; i++) {
-        for (let j = i + 1; j < nextNodes.length; j++) {
-          const n1 = nextNodes[i];
-          const n2 = nextNodes[j];
-          const dx = n1.x - n2.x;
-          const dy = n1.y - n2.y;
-          const distSq = dx * dx + dy * dy || 1;
-          const dist = Math.sqrt(distSq);
-          const force = REPULSION / distSq;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
+              // 1. Repulsión
+              for (let i = 0; i < nextNodes.length; i++) {
+                for (let j = i + 1; j < nextNodes.length; j++) {
+                  const n1 = nextNodes[i];
+                  const n2 = nextNodes[j];
+                  const dx = n1.x - n2.x;
+                  const dy = n1.y - n2.y;
+                  const distSq = dx * dx + dy * dy || 1;
+                  const dist = Math.sqrt(distSq);
+                  const force = REPULSION / distSq;
+                  const fx = (dx / dist) * force;
+                  const fy = (dy / dist) * force;
 
-          if (draggingNode.current !== n1.id) { n1.vx += fx; n1.vy += fy; }
-          if (draggingNode.current !== n2.id) { n2.vx -= fx; n2.vy -= fy; }
-        }
-      }
+                  if (draggingNode.current !== n1.id) { n1.vx += fx; n1.vy += fy; }
+                  if (draggingNode.current !== n2.id) { n2.vx -= fx; n2.vy -= fy; }
+                }
+              }
 
-      // 2. Spring Force (from transitions array)
-      parsedPDA.transitions.forEach((t) => {
-        if (t.from === t.to) return;
-        const n1 = nextNodes.find(n => n.id === t.from);
-        const n2 = nextNodes.find(n => n.id === t.to);
-        if (!n1 || !n2) return;
+              // 2. Fuerza de Resorte
+              parsedPDA.transitions.forEach((t) => {
+                if (t.from === t.to) return;
+                const n1 = nextNodes.find(n => n.id === t.from);
+                const n2 = nextNodes.find(n => n.id === t.to);
+                if (!n1 || !n2) return;
 
-        const dx = n2.x - n1.x;
-        const dy = n2.y - n1.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = (dist - SPRING_LENGTH) * SPRING_STRENGTH;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
+                const dx = n2.x - n1.x;
+                const dy = n2.y - n1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                const force = (dist - SPRING_LENGTH) * SPRING_STRENGTH;
+                const fx = (dx / dist) * force;
+                const fy = (dy / dist) * force;
 
-        if (draggingNode.current !== n1.id) { n1.vx += fx; n1.vy += fy; }
-        if (draggingNode.current !== n2.id) { n2.vx -= fx; n2.vy -= fy; }
-      });
+                if (draggingNode.current !== n1.id) { n1.vx += fx; n1.vy += fy; }
+                if (draggingNode.current !== n2.id) { n2.vx -= fx; n2.vy -= fy; }
+              });
 
-      // 3. Center Gravity & Boundary Update
-      nextNodes.forEach(n => {
-        if (draggingNode.current === n.id) return;
-        n.vx += (width / 2 - n.x) * CENTER_PULL;
-        n.vy += (height / 2 - n.y) * CENTER_PULL;
-        n.x += n.vx;
-        n.y += n.vy;
-        n.vx *= DAMPING;
-        n.vy *= DAMPING;
+              // 3. Gravedad al Centro y Límites
+              nextNodes.forEach(n => {
+                if (draggingNode.current === n.id) return;
+                n.vx += (width / 2 - n.x) * CENTER_PULL;
+                n.vy += (height / 2 - n.y) * CENTER_PULL;
+                n.x += n.vx;
+                n.y += n.vy;
+                n.vx *= DAMPING;
+                n.vy *= DAMPING;
 
-        if (n.x < 40) { n.x = 40; n.vx *= -1; }
-        if (n.x > width - 40) { n.x = width - 40; n.vx *= -1; }
-        if (n.y < 40) { n.y = 40; n.vy *= -1; }
-        if (n.y > height - 40) { n.y = height - 40; n.vy *= -1; }
-      });
-      return nextNodes;
-    });
-    requestRef.current = requestAnimationFrame(updatePhysics);
-  }, [parsedPDA]);
+                if (n.x < 40) { n.x = 40; n.vx *= -1; }
+                if (n.x > width - 40) { n.x = width - 40; n.vx *= -1; }
+                if (n.y < 40) { n.y = 40; n.vy *= -1; }
+                if (n.y > height - 40) { n.y = height - 40; n.vy *= -1; }
+              });
+              return nextNodes;
+            });
+            requestRef.current = requestAnimationFrame(updatePhysics);
+          }, [parsedPDA]);
 
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(updatePhysics);
-    return () => cancelAnimationFrame(requestRef.current);
-  }, [updatePhysics]);
+          useEffect(() => {
+            requestRef.current = requestAnimationFrame(updatePhysics);
+            return () => cancelAnimationFrame(requestRef.current);
+          }, [updatePhysics]);
 
-  // --- Drag Handlers ---
-  const handleMouseDown = (e, nodeId) => {
-    draggingNode.current = nodeId;
-    e.stopPropagation();
-  };
-  
-  const handleMouseMove = (e) => {
-    if (draggingNode.current && svgRef.current) {
-      const svgRect = svgRef.current.getBoundingClientRect();
-      const x = e.clientX - svgRect.left;
-      const y = e.clientY - svgRect.top;
-      setNodes(prev => prev.map(n => n.id === draggingNode.current ? { ...n, x, y, vx: 0, vy: 0 } : n));
-    }
-  };
+          const handleMouseDown = (e, nodeId) => {
+            draggingNode.current = nodeId;
+            e.stopPropagation();
+          };
+          
+          const handleMouseMove = (e) => {
+            if (draggingNode.current && svgRef.current) {
+              const svgRect = svgRef.current.getBoundingClientRect();
+              const x = e.clientX - svgRect.left;
+              const y = e.clientY - svgRect.top;
+              setNodes(prev => prev.map(n => n.id === draggingNode.current ? { ...n, x, y, vx: 0, vy: 0 } : n));
+            }
+          };
 
-  const handleMouseUp = () => { draggingNode.current = null; };
+          const handleMouseUp = () => { draggingNode.current = null; };
 
-  // --- PDA Simulation Logic ---
-  const resetSimulation = (pdaOverride = null) => {
-    const pda = pdaOverride || parsedPDA;
-    setIsPlaying(false);
-    setStepIndex(0);
-    setVerdict('pending');
-    if (pda) {
-      setCurrentState(pda.startState);
-      // Initialize with empty stack if startStack is empty string
-      setStack(pda.startStack ? [pda.startStack] : []);
-    }
-  };
+          const resetSimulation = (pdaOverride = null) => {
+            const pda = pdaOverride || parsedPDA;
+            setIsPlaying(false);
+            setStepIndex(0);
+            setVerdict('pending');
+            if (pda) {
+              setCurrentState(pda.startState);
+              setStack(pda.startStack ? [pda.startStack] : []);
+            }
+          };
 
-  const step = () => {
-    if (!parsedPDA || verdict !== 'pending') return;
+          const step = () => {
+            if (!parsedPDA || verdict !== 'pending') return;
 
-    // Check acceptance before step (if at end, in accept state AND stack is empty)
-    if (stepIndex === inputString.length && parsedPDA.acceptStates.includes(currentState) && stack.length === 0) {
-      setVerdict('accepted');
-      setIsPlaying(false);
-      return;
-    }
+            if (stepIndex === inputString.length && parsedPDA.acceptStates.includes(currentState) && stack.length === 0) {
+              setVerdict('accepted');
+              setIsPlaying(false);
+              return;
+            }
 
-    const char = stepIndex < inputString.length ? inputString[stepIndex] : "";
-    const topStack = stack.length > 0 ? stack[stack.length - 1] : "";
+            const char = stepIndex < inputString.length ? inputString[stepIndex] : "";
+            const topStack = stack.length > 0 ? stack[stack.length - 1] : "";
 
-    let validTrans = null;
-    let isEpsilon = false;
+            let validTrans = null;
+            let isEpsilon = false;
 
-    // 1. Try input character transition
-    if (char !== "") {
-      validTrans = parsedPDA.transitions.find(t => 
-        t.from === currentState && 
-        t.input === char && 
-        (t.pop === "" || t.pop === topStack) // Accept if it doesn't require popping, or matches top
-      );
-    }
+            if (char !== "") {
+              validTrans = parsedPDA.transitions.find(t => 
+                t.from === currentState && 
+                t.input === char && 
+                (t.pop === "" || t.pop === topStack)
+              );
+            }
 
-    // 2. Try lambda (epsilon) transition
-    if (!validTrans) {
-      validTrans = parsedPDA.transitions.find(t => 
-        t.from === currentState && 
-        t.input === "" && 
-        (t.pop === "" || t.pop === topStack)
-      );
-      if (validTrans) isEpsilon = true;
-    }
+            if (!validTrans) {
+              validTrans = parsedPDA.transitions.find(t => 
+                t.from === currentState && 
+                t.input === "" && 
+                (t.pop === "" || t.pop === topStack)
+              );
+              if (validTrans) isEpsilon = true;
+            }
 
-    if (validTrans) {
-      setCurrentState(validTrans.to);
-      if (!isEpsilon) setStepIndex(prev => prev + 1);
+            if (validTrans) {
+              setCurrentState(validTrans.to);
+              if (!isEpsilon) setStepIndex(prev => prev + 1);
 
-      // Update stack
-      let newStack = [...stack];
-      
-      // Only pop the top element if the transition explicitly required it
-      if (validTrans.pop !== "") {
-        newStack.pop();
-      }
+              let newStack = [...stack];
+              if (validTrans.pop !== "") {
+                newStack.pop();
+              }
 
-      if (validTrans.push !== "") {
-        const pushChars = validTrans.push.split('');
-        for (let i = pushChars.length - 1; i >= 0; i--) {
-          newStack.push(pushChars[i]);
-        }
-      }
-      setStack(newStack);
-    } else {
-      // Stuck. Check final acceptance condition.
-      if (stepIndex === inputString.length && parsedPDA.acceptStates.includes(currentState) && stack.length === 0) {
-        setVerdict('accepted');
-      } else {
-        setVerdict('rejected');
-      }
-      setIsPlaying(false);
-    }
-  };
+              if (validTrans.push !== "") {
+                const pushChars = validTrans.push.split('');
+                for (let i = pushChars.length - 1; i >= 0; i--) {
+                  newStack.push(pushChars[i]);
+                }
+              }
+              setStack(newStack);
+            } else {
+              if (stepIndex === inputString.length && parsedPDA.acceptStates.includes(currentState) && stack.length === 0) {
+                setVerdict('accepted');
+              } else {
+                setVerdict('rejected');
+              }
+              setIsPlaying(false);
+            }
+          };
 
-  useEffect(() => {
-    if (isPlaying) {
-      timerRef.current = setInterval(step, 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, currentState, stepIndex, verdict, parsedPDA, stack]);
+          useEffect(() => {
+            if (isPlaying) {
+              timerRef.current = setInterval(step, 1000);
+            } else {
+              clearInterval(timerRef.current);
+            }
+            return () => clearInterval(timerRef.current);
+          }, [isPlaying, currentState, stepIndex, verdict, parsedPDA, stack]);
 
-  useEffect(() => {
-    resetSimulation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputString]);
+          useEffect(() => {
+            resetSimulation();
+          }, [inputString]);
 
-  // Aggregate edges for rendering
-  const edges = useMemo(() => {
-    if (!parsedPDA) return [];
-    const edgeMap = {};
+          const edges = useMemo(() => {
+            if (!parsedPDA) return [];
+            const edgeMap = {};
 
-    parsedPDA.transitions.forEach(t => {
-      const key = `${t.from}-${t.to}`;
-      if (!edgeMap[key]) edgeMap[key] = [];
-      
-      const inChar = t.input === "" ? "λ" : t.input;
-      const popChar = t.pop === "" ? "λ" : t.pop;
-      const pushChar = t.push === "" ? "λ" : t.push;
-      
-      edgeMap[key].push(`${inChar} ${popChar}/${pushChar}`);
-    });
-
-    return Object.entries(edgeMap).map(([key, labels]) => {
-      const [src, tgt] = key.split('-');
-      return { src, tgt, labels: labels.join(' | '), isSelfLoop: src === tgt };
-    });
-  }, [parsedPDA]);
-
-  return (
-    <div className="flex flex-col h-screen bg-slate-950 font-sans text-slate-300">
-      {/* HEADER */}
-      <div className="h-14 bg-slate-900 border-b border-slate-800 flex items-center px-6 justify-between shadow-md z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center">
-            <Layers className="text-indigo-400" size={18} />
-          </div>
-          <h1 className="font-bold text-lg tracking-wide text-slate-100">PDA Studio</h1>
-          <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded ml-2">Pushdown Automaton</span>
-        </div>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* EDITOR */}
-        <div className="w-96 bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-xl">
-          <div className="h-10 bg-slate-800/50 flex items-center px-4 border-b border-slate-700/50 justify-between">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Configuration (JSON)</span>
-            {error && <span className="text-xs text-red-400 font-medium">Syntax Error</span>}
-          </div>
-          <div className="flex-1 p-4 relative">
-            <textarea
-              className={`w-full h-full bg-slate-950/50 border rounded-lg p-4 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors ${
-                error ? 'border-red-500/50 text-red-200' : 'border-slate-700 text-slate-300'
-              }`}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              spellCheck="false"
-            />
-          </div>
-        </div>
-
-        {/* VISUALIZATION */}
-        <div className="flex-1 flex flex-col bg-slate-950 relative">
-            
-          {/* TAPE & STACK AREA */}
-          <div className="h-44 bg-slate-900/80 backdrop-blur-sm border-b border-slate-800 flex items-center justify-center gap-16 relative z-10 shadow-sm p-4">
+            parsedPDA.transitions.forEach(t => {
+              const key = `${t.from}-${t.to}`;
+              if (!edgeMap[key]) edgeMap[key] = [];
               
-              {/* Stack Visualizer */}
-              <div className="flex flex-col items-center gap-2 h-full justify-end">
-                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Stack</span>
-                <div className="flex flex-col-reverse justify-start items-center w-16 h-28 bg-slate-950 border-x-2 border-b-2 border-slate-700 rounded-b overflow-hidden pt-1 relative">
-                    <div className="absolute top-0 w-full h-4 bg-gradient-to-b from-slate-950 to-transparent z-10"></div>
-                    {/* Render Stack: map creates elements, CSS flex-col-reverse stacks them visually from bottom to top */}
-                    {[...stack].map((item, index) => {
-                        const isTop = index === stack.length - 1;
-                        return (
-                            <div key={index} className={`w-12 shrink-0 h-7 flex items-center justify-center font-mono text-sm border-2 rounded mb-1 transition-all
-                                ${isTop ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-slate-800 border-slate-600 text-slate-400'}
-                            `}>
-                                {item}
-                            </div>
-                        )
-                    })}
+              const inChar = t.input === "" ? "λ" : t.input;
+              const popChar = t.pop === "" ? "λ" : t.pop;
+              const pushChar = t.push === "" ? "λ" : t.push;
+              
+              edgeMap[key].push(`${inChar} ${popChar}/${pushChar}`);
+            });
+
+            return Object.entries(edgeMap).map(([key, labels]) => {
+              const [src, tgt] = key.split('-');
+              return { src, tgt, labels: labels.join(' | '), isSelfLoop: src === tgt };
+            });
+          }, [parsedPDA]);
+
+          return (
+            <div className="flex flex-col h-full">
+              {/* HEADER */}
+              <div className="h-14 bg-slate-900 border-b border-slate-800 flex items-center px-6 justify-between shadow-md z-20">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center">
+                    <Layers className="text-indigo-400" size={18} />
+                  </div>
+                  <h1 className="font-bold text-lg tracking-wide text-slate-100">PDA Studio</h1>
+                  <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded ml-2">Pushdown Automaton</span>
                 </div>
               </div>
 
-              {/* Tape Visualizer */}
-              <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center gap-4">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Input Tape</span>
-                      <input 
-                          type="text" 
-                          value={inputString}
-                          onChange={(e) => setInputString(e.target.value)}
-                          className="bg-slate-950 border border-slate-700 rounded px-4 py-1.5 font-mono text-slate-200 focus:outline-none focus:border-indigo-500 w-64 text-center tracking-widest shadow-inner"
-                      />
+              <div className="flex flex-1 overflow-hidden">
+                {/* EDITOR */}
+                <div className="w-96 bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-xl">
+                  <div className="h-10 bg-slate-800/50 flex items-center px-4 border-b border-slate-700/50 justify-between">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Configuration (JSON)</span>
+                    {error && <span className="text-xs text-red-400 font-medium">Syntax Error</span>}
                   </div>
-
-                  <div className="flex items-center justify-center gap-1 font-mono text-lg h-10">
-                      {inputString.split('').map((char, index) => {
-                          const isCurrent = index === stepIndex;
-                          return (
-                              <div key={index} className={`
-                                  w-8 h-12 flex items-center justify-center border-b-4 transition-all duration-300 rounded-t
-                                  ${isCurrent ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300 -translate-y-1' : 'border-slate-800 text-slate-500'}
-                              `}>
-                                  {char}
-                              </div>
-                          )
-                      })}
-                      <div className={`w-8 h-12 flex items-center justify-center border-b-4 transition-all duration-300 rounded-t ${stepIndex === inputString.length ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 -translate-y-1' : 'border-transparent text-slate-700'}`}>
-                          #
-                      </div>
+                  <div className="flex-1 p-4 relative">
+                    <textarea
+                      className={`w-full h-full bg-slate-950/50 border rounded-lg p-4 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-colors ${
+                        error ? 'border-red-500/50 text-red-200' : 'border-slate-700 text-slate-300'
+                      }`}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      spellCheck="false"
+                    />
                   </div>
-              </div>
+                </div>
 
-              {/* Verdict Badge */}
-              <div className="absolute right-8 top-8 transition-all duration-500 transform">
-                  {verdict === 'accepted' && (
-                      <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/50 px-4 py-2 rounded-lg border border-emerald-800/50 shadow-lg shadow-emerald-900/20">
-                          <CheckCircle size={20} /> <span className="font-bold tracking-wide">ACCEPTED</span>
-                      </div>
-                  )}
-                  {verdict === 'rejected' && (
-                      <div className="flex items-center gap-2 text-rose-400 bg-rose-950/50 px-4 py-2 rounded-lg border border-rose-800/50 shadow-lg shadow-rose-900/20">
-                          <XCircle size={20} /> <span className="font-bold tracking-wide">REJECTED</span>
-                      </div>
-                  )}
-              </div>
-          </div>
-
-          {/* SVG CANVAS */}
-          <div 
-            className="flex-1 overflow-hidden relative cursor-default" 
-            ref={svgRef}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-          >
-              <svg className="w-full h-full pointer-events-none">
-                  <defs>
-                      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
-                          <polygon points="0 0, 10 3.5, 0 7" fill="#475569" />
-                      </marker>
-                      <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
-                          <polygon points="0 0, 10 3.5, 0 7" fill="#818cf8" />
-                      </marker>
-                  </defs>
-
-                  {/* EDGES */}
-                  {nodes.length > 0 && edges.map((edge, i) => {
-                      const n1 = nodes.find(n => n.id === edge.src);
-                      const n2 = nodes.find(n => n.id === edge.tgt);
-                      if (!n1 || !n2) return null;
-
-                      const isActive = currentState === edge.src && isPlaying;
-                      const pathData = calculateEdge(n1, n2, edge.isSelfLoop);
-                      const labelWidth = Math.max(40, edge.labels.length * 7);
+                {/* VISUALIZATION */}
+                <div className="flex-1 flex flex-col bg-slate-950 relative">
+                    
+                  {/* TAPE & STACK AREA */}
+                  <div className="h-44 bg-slate-900/80 backdrop-blur-sm border-b border-slate-800 flex items-center justify-center gap-16 relative z-10 shadow-sm p-4">
                       
-                      return (
-                          <g key={i} className="pointer-events-auto">
-                              <path 
-                                  d={pathData.d} 
-                                  stroke={isActive ? "#818cf8" : "#334155"} 
-                                  strokeWidth="2" 
-                                  fill="none" 
-                                  markerEnd={isActive ? "url(#arrowhead-active)" : "url(#arrowhead)"}
-                                  className="transition-colors duration-200"
-                              />
-                              <rect 
-                                  x={pathData.labelX - labelWidth / 2} 
-                                  y={pathData.labelY - 12} 
-                                  width={labelWidth} 
-                                  height="24" 
-                                  rx="4"
-                                  fill="#0f172a" 
-                                  className="opacity-95 border border-slate-800"
-                              />
-                              <text 
-                                  x={pathData.labelX} 
-                                  y={pathData.labelY} 
-                                  fill="#94a3b8" 
-                                  fontSize="12" 
-                                  textAnchor="middle" 
-                                  dominantBaseline="central"
-                                  fontWeight="600"
-                                  fontFamily="monospace"
-                              >
-                                  {edge.labels}
-                              </text>
-                          </g>
-                      );
-                  })}
+                      <div className="flex flex-col items-center gap-2 h-full justify-end">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Stack</span>
+                        <div className="flex flex-col-reverse justify-start items-center w-16 h-28 bg-slate-950 border-x-2 border-b-2 border-slate-700 rounded-b overflow-hidden pt-1 relative">
+                            <div className="absolute top-0 w-full h-4 bg-gradient-to-b from-slate-950 to-transparent z-10"></div>
+                            {[...stack].map((item, index) => {
+                                const isTop = index === stack.length - 1;
+                                return (
+                                    <div key={index} className={`w-12 shrink-0 h-7 flex items-center justify-center font-mono text-sm border-2 rounded mb-1 transition-all
+                                        ${isTop ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-slate-800 border-slate-600 text-slate-400'}
+                                    `}>
+                                        {item}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                      </div>
 
-                  {/* NODES */}
-                  {nodes.map((node) => {
-                      const isCurrent = currentState === node.id;
-                      const isStart = parsedPDA && parsedPDA.startState === node.id;
-                      const isAccept = parsedPDA && parsedPDA.acceptStates.includes(node.id);
+                      <div className="flex flex-col items-center gap-4">
+                          <div className="flex items-center gap-4">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Input Tape</span>
+                              <input 
+                                  type="text" 
+                                  value={inputString}
+                                  onChange={(e) => setInputString(e.target.value)}
+                                  className="bg-slate-950 border border-slate-700 rounded px-4 py-1.5 font-mono text-slate-200 focus:outline-none focus:border-indigo-500 w-64 text-center tracking-widest shadow-inner"
+                              />
+                          </div>
 
-                      return (
-                          <g 
-                              key={node.id} 
-                              transform={`translate(${node.x},${node.y})`}
-                              onMouseDown={(e) => handleMouseDown(e, node.id)}
-                              className="pointer-events-auto cursor-grab active:cursor-grabbing"
+                          <div className="flex items-center justify-center gap-1 font-mono text-lg h-10">
+                              {inputString.split('').map((char, index) => {
+                                  const isCurrent = index === stepIndex;
+                                  return (
+                                      <div key={index} className={`
+                                          w-8 h-12 flex items-center justify-center border-b-4 transition-all duration-300 rounded-t
+                                          ${isCurrent ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300 -translate-y-1' : 'border-slate-800 text-slate-500'}
+                                      `}>
+                                          {char}
+                                      </div>
+                                  )
+                              })}
+                              <div className={`w-8 h-12 flex items-center justify-center border-b-4 transition-all duration-300 rounded-t ${stepIndex === inputString.length ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 -translate-y-1' : 'border-transparent text-slate-700'}`}>
+                                  #
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="absolute right-8 top-8 transition-all duration-500 transform">
+                          {verdict === 'accepted' && (
+                              <div className="flex items-center gap-2 text-emerald-400 bg-emerald-950/50 px-4 py-2 rounded-lg border border-emerald-800/50 shadow-lg shadow-emerald-900/20">
+                                  <CheckCircle size={20} /> <span className="font-bold tracking-wide">ACCEPTED</span>
+                              </div>
+                          )}
+                          {verdict === 'rejected' && (
+                              <div className="flex items-center gap-2 text-rose-400 bg-rose-950/50 px-4 py-2 rounded-lg border border-rose-800/50 shadow-lg shadow-rose-900/20">
+                                  <XCircle size={20} /> <span className="font-bold tracking-wide">REJECTED</span>
+                              </div>
+                          )}
+                      </div>
+                  </div>
+
+                  <div 
+                    className="flex-1 overflow-hidden relative cursor-default" 
+                    ref={svgRef}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                  >
+                      <svg className="w-full h-full pointer-events-none">
+                          <defs>
+                              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+                                  <polygon points="0 0, 10 3.5, 0 7" fill="#475569" />
+                              </marker>
+                              <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="28" refY="3.5" orient="auto">
+                                  <polygon points="0 0, 10 3.5, 0 7" fill="#818cf8" />
+                              </marker>
+                          </defs>
+
+                          {nodes.length > 0 && edges.map((edge, i) => {
+                              const n1 = nodes.find(n => n.id === edge.src);
+                              const n2 = nodes.find(n => n.id === edge.tgt);
+                              if (!n1 || !n2) return null;
+
+                              const isActive = currentState === edge.src && isPlaying;
+                              const pathData = calculateEdge(n1, n2, edge.isSelfLoop);
+                              const labelWidth = Math.max(40, edge.labels.length * 7);
+                              
+                              return (
+                                  <g key={i} className="pointer-events-auto">
+                                      <path 
+                                          d={pathData.d} 
+                                          stroke={isActive ? "#818cf8" : "#334155"} 
+                                          strokeWidth="2" 
+                                          fill="none" 
+                                          markerEnd={isActive ? "url(#arrowhead-active)" : "url(#arrowhead)"}
+                                          className="transition-colors duration-200"
+                                      />
+                                      <rect 
+                                          x={pathData.labelX - labelWidth / 2} 
+                                          y={pathData.labelY - 12} 
+                                          width={labelWidth} 
+                                          height="24" 
+                                          rx="4"
+                                          fill="#0f172a" 
+                                          className="opacity-95 border border-slate-800"
+                                      />
+                                      <text 
+                                          x={pathData.labelX} 
+                                          y={pathData.labelY} 
+                                          fill="#94a3b8" 
+                                          fontSize="12" 
+                                          textAnchor="middle" 
+                                          dominantBaseline="central"
+                                          fontWeight="600"
+                                          fontFamily="monospace"
+                                      >
+                                          {edge.labels}
+                                      </text>
+                                  </g>
+                              );
+                          })}
+
+                          {nodes.map((node) => {
+                              const isCurrent = currentState === node.id;
+                              const isStart = parsedPDA && parsedPDA.startState === node.id;
+                              const isAccept = parsedPDA && parsedPDA.acceptStates.includes(node.id);
+
+                              return (
+                                  <g 
+                                      key={node.id} 
+                                      transform={`translate(${node.x},${node.y})`}
+                                      onMouseDown={(e) => handleMouseDown(e, node.id)}
+                                      className="pointer-events-auto cursor-grab active:cursor-grabbing"
+                                  >
+                                      {isStart && (
+                                          <path d="M -55 0 L -35 0" stroke="#475569" strokeWidth="2" markerEnd="url(#arrowhead)" />
+                                      )}
+
+                                      <circle 
+                                          r="30" 
+                                          fill={isCurrent ? "#4f46e5" : "#1e293b"} 
+                                          stroke={isCurrent ? "#818cf8" : "#475569"} 
+                                          strokeWidth={isCurrent ? "3" : "2"}
+                                          className="transition-colors duration-200 shadow-xl"
+                                      />
+
+                                      {isAccept && (
+                                          <circle r="24" fill="none" stroke={isCurrent ? "#c7d2fe" : "#64748b"} strokeWidth="2" />
+                                      )}
+
+                                      <text 
+                                          fill={isCurrent ? "#ffffff" : "#cbd5e1"} 
+                                          fontSize="14" 
+                                          fontWeight="bold"
+                                          textAnchor="middle" 
+                                          dominantBaseline="central"
+                                          className="pointer-events-none select-none"
+                                      >
+                                          {node.id}
+                                      </text>
+                                  </g>
+                              );
+                          })}
+                      </svg>
+
+                      <div className="absolute bottom-4 left-4 text-slate-500 text-xs flex items-center gap-2 pointer-events-none">
+                          <MousePointer2 size={12} /> Drag nodes to adjust layout
+                      </div>
+                  </div>
+
+                  <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-2xl px-2 py-2 flex gap-2 shadow-2xl z-30">
+                      <button 
+                          onClick={() => resetSimulation()}
+                          className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                          title="Reset"
+                      >
+                          <RotateCcw size={18} />
+                      </button>
+                      
+                      <div className="w-px bg-slate-700 my-2 mx-1"></div>
+
+                      {!isPlaying ? (
+                          <button 
+                              onClick={() => {
+                                  if(verdict !== 'pending') resetSimulation();
+                                  setIsPlaying(true);
+                              }}
+                              disabled={verdict !== 'pending' && stepIndex === inputString.length}
+                              className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale"
+                              title="Play"
                           >
-                              {/* Start Indicator */}
-                              {isStart && (
-                                  <path d="M -55 0 L -35 0" stroke="#475569" strokeWidth="2" markerEnd="url(#arrowhead)" />
-                              )}
+                              <Play fill="currentColor" size={20} />
+                          </button>
+                      ) : (
+                          <button 
+                              onClick={() => setIsPlaying(false)}
+                              className="p-3 bg-amber-500 hover:bg-amber-400 text-white rounded-xl shadow-lg shadow-amber-900/40 transition-all hover:scale-105 active:scale-95"
+                              title="Pause"
+                          >
+                              <Pause fill="currentColor" size={20} />
+                          </button>
+                      )}
 
-                              {/* Main Circle */}
-                              <circle 
-                                  r="30" 
-                                  fill={isCurrent ? "#4f46e5" : "#1e293b"} 
-                                  stroke={isCurrent ? "#818cf8" : "#475569"} 
-                                  strokeWidth={isCurrent ? "3" : "2"}
-                                  className="transition-colors duration-200 shadow-xl"
-                              />
-
-                              {/* Accept Ring */}
-                              {isAccept && (
-                                  <circle r="24" fill="none" stroke={isCurrent ? "#c7d2fe" : "#64748b"} strokeWidth="2" />
-                              )}
-
-                              {/* Label */}
-                              <text 
-                                  fill={isCurrent ? "#ffffff" : "#cbd5e1"} 
-                                  fontSize="14" 
-                                  fontWeight="bold"
-                                  textAnchor="middle" 
-                                  dominantBaseline="central"
-                                  className="pointer-events-none select-none"
-                              >
-                                  {node.id}
-                              </text>
-                          </g>
-                      );
-                  })}
-              </svg>
-
-              {/* Drag Hint */}
-              <div className="absolute bottom-4 left-4 text-slate-500 text-xs flex items-center gap-2 pointer-events-none">
-                  <MousePointer2 size={12} /> Drag nodes to adjust layout
+                      <button 
+                          onClick={step}
+                          disabled={isPlaying || verdict !== 'pending'}
+                          className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-30"
+                          title="Step by step"
+                      >
+                          <SkipForward size={18} />
+                      </button>
+                  </div>
+                    
+                </div>
               </div>
-          </div>
+            </div>
+          );
+        }
 
-          {/* CONTROLS */}
-          <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-2xl px-2 py-2 flex gap-2 shadow-2xl z-30">
-              <button 
-                  onClick={() => resetSimulation()}
-                  className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
-                  title="Reset"
-              >
-                  <RotateCcw size={18} />
-              </button>
-              
-              <div className="w-px bg-slate-700 my-2 mx-1"></div>
-
-              {!isPlaying ? (
-                  <button 
-                      onClick={() => {
-                          if(verdict !== 'pending') resetSimulation();
-                          setIsPlaying(true);
-                      }}
-                      disabled={verdict !== 'pending' && stepIndex === inputString.length}
-                      className="p-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:grayscale"
-                      title="Play"
-                  >
-                      <Play fill="currentColor" size={20} />
-                  </button>
-              ) : (
-                  <button 
-                      onClick={() => setIsPlaying(false)}
-                      className="p-3 bg-amber-500 hover:bg-amber-400 text-white rounded-xl shadow-lg shadow-amber-900/40 transition-all hover:scale-105 active:scale-95"
-                      title="Pause"
-                  >
-                      <Pause fill="currentColor" size={20} />
-                  </button>
-              )}
-
-              <button 
-                  onClick={step}
-                  disabled={isPlaying || verdict !== 'pending'}
-                  className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors disabled:opacity-30"
-                  title="Step by step"
-              >
-                  <SkipForward size={18} />
-              </button>
-          </div>
-            
-        </div>
-      </div>
-    </div>
-  );
-}
+        // Renderizar la aplicación en el contenedor #root
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PDAEngine />);
+    </script>
+</body>
+</html>
